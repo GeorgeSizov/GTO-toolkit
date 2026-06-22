@@ -19,9 +19,9 @@ __all__ = [
 
 def load_basis_input(path):
     with open(path) as f:
-        N, K, Geom, Bgen, Exp = _read_gaussian_input(f)
+        N, K, Geom, Bgen, Exp, E_nucl = _read_gaussian_input(f)
         Bexp = normalization(Bgen, Exp, Geom)
-        return N, K, Geom, Bgen, Bexp
+        return N, K, Geom, Bgen, Bexp, E_nucl
 
 
 def atom_label(name):
@@ -330,5 +330,21 @@ def _read_gaussian_input(file):
         current_line = next_line + 1
 
     gen = np.vstack(gen_list)
-    return n, int(gen.size / 2), geom, gen, exp_list
+    E_nucl = nuclei_energy(geom)
+    return n, int(gen.size / 2), geom, gen, exp_list, E_nucl
 
+
+def nuclei_energy(geom):
+
+    N = int(geom.size / 4)  # a number of nuclei
+    M = int(N * (N + 1) / 2)  # atomic pair including repeating
+    E = 0  # nuclei energy
+    for k in range(M):
+        i, j = coll_ind(k)
+        if i != j :
+            x = geom[i, 1] - geom[j, 1]
+            y = geom[i, 2] - geom[j, 2]
+            z = geom[i, 3] - geom[j, 3]
+            r = mt.sqrt(x ** 2 + y ** 2 + z ** 2)
+            E += geom[i, 0] * geom[j, 0] / r
+    return E
