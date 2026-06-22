@@ -1,1 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends.legacy:build"
 
+[project]
+name = "GTO_toolkit"
+version = "1.0"
+description = "GTO-based quantum chemistry toolkit: input parsing, McMurchie-Davidson integrals, and DFT grids"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Georgii N. Sizov"}]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "numba>=0.57"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
