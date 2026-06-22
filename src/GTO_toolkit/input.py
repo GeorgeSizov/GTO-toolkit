@@ -10,7 +10,8 @@ Only s-, p-, d-, f-, and g-type basis functions are supported.
 import numpy as np
 import math as mt
 from typing import List, Dict, Any
-from analytical_integrals import normalization
+from .analytical_integrals import normalization
+from .utils import coll_ind
 
 __all__ = [
     "load_basis_input"

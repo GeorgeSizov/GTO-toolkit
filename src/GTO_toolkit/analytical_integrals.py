@@ -12,7 +12,7 @@ import numpy as np
 import math as mt
 import scipy as sp
 from numba import njit
-from utils import inv_coll_ind
+from .utils import inv_coll_ind
 
 
 __all__ = ["matrix", "matrix_element",

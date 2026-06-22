@@ -5,9 +5,9 @@
 
 from scipy.special.orthogonal import p_roots
 import numpy as np
-from Lebedev_grids import Lebedev_grid
-from Becke_partitioning import Becke_partitioning
-from basis_on_grid import basis_on_grid
+from .Lebedev_grids import Lebedev_grid
+from .Becke_partitioning import Becke_partitioning
+from .basis_on_grid import basis_on_grid
 
 
 __all__ = ["generate_grid"]
