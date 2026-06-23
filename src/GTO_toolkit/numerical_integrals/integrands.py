@@ -9,7 +9,7 @@ __all__=["grid_density", "vxc_matrix_element", "vxc_energy_density"]
 
 @njit
 def grid_density(basis, rdm):
-    """ calculate electron density on grid"""
+    """calculate electron density on grid"""
     n_grid = basis.shape[0]
     k_basis = basis.shape[1]
     dens = np.zeros(n_grid)
@@ -24,7 +24,7 @@ def grid_density(basis, rdm):
 def vxc(kind, density):
     """ calculate grid values
         of vxc potential
-        kind = 1 LDA vxc"""
+        kind = 1 'LDA exchange-only'"""
     n_grid = density.shape[0]
     v = np.zeros(n_grid)
     if kind == 1:
@@ -37,9 +37,9 @@ def vxc(kind, density):
 @njit
 def vxc_energy_density(kind, density):
     """calculate grid values
-       of energy density \epsilon and
-       integrand \epsilon \times \rho
-       kind = 1 LDA vxc"""
+       of energy density epsilon and
+       integrand epsilon times rho
+       kind = 1 'LDA exchange-only'"""
     n_grid = density.shape[0]
     epsilon = np.zeros(n_grid)
     eps_rho = np.zeros(n_grid)

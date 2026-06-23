@@ -13,12 +13,29 @@ import math as mt
 import scipy as sp
 from numba import njit
 from .utils import inv_coll_ind
+import time
 
 
-__all__ = ["matrix", "matrix_element",
+__all__ = ["all_matrices",
+           "matrix", "matrix_element",
            "coulomb_function",
            "normalization", "orthogonalization"
            ]
+
+
+def all_matrices(k, geom, gen, exp):
+    """combine all necessary matrix computations."""
+    exp = normalization(gen, exp, geom)  # normalization of basis functions if they are not
+    S = matrix(gen, exp, geom, 1)  # electron-nuclei interaction matrix
+    C = np.linalg.inv(sp.linalg.sqrtm(S))  # orthogonalization matrix
+    kin = matrix(gen, exp, geom, 2)  # electron-nuclei interaction matrix
+    elnucl = matrix(gen, exp, geom, 3)  # electron-nuclei interaction matrix
+    print("start of a tensor calculation")
+    start_cpu_time = time.process_time()
+    ten = elel_tensor(gen, exp)
+    end_cpu_time = time.process_time()
+    print("calculation of K ^ 4 = ", k ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
+    return exp, C, S, kin, elnucl, kin + elnucl, ten
 
 
 @njit
