@@ -31,6 +31,7 @@ def vxc(kind, density):
         for t in range(n_grid):
             tmp = max(density[t], 0.0)
             v[t] += tmp ** (1/3)
+        v *= - (3 / np.pi) ** (1 / 3)
     return v
 
 
@@ -46,8 +47,10 @@ def vxc_energy_density(kind, density):
     if kind == 1:
         for t in range(n_grid):
             tmp_dens = max(density[t], 0.0)
-            epsilon[t] = tmp_dens ** (4/3)
+            epsilon[t] = tmp_dens ** (1/3)
             eps_rho[t] = tmp_dens * epsilon[t]
+        epsilon *= - 3 / 4 * (3 / np.pi) ** (1 / 3)
+        eps_rho *= - 3 / 4 * (3 / np.pi) ** (1 / 3)
     return epsilon, eps_rho
 
 

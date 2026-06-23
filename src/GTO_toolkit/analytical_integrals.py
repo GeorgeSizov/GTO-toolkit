@@ -30,6 +30,7 @@ def all_matrices(k, geom, gen, exp):
     C = np.linalg.inv(sp.linalg.sqrtm(S))  # orthogonalization matrix
     kin = matrix(gen, exp, geom, 2)  # electron-nuclei interaction matrix
     elnucl = matrix(gen, exp, geom, 3)  # electron-nuclei interaction matrix
+    print("Number of basis functions = ", S.shape[0])
     print("start of a tensor calculation")
     start_cpu_time = time.process_time()
     ten = elel_tensor(gen, exp)

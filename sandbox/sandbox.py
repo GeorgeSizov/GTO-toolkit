@@ -7,8 +7,10 @@ from GTO_toolkit.input import load_basis_input
 from GTO_toolkit.numerical_integrals.integrator import *
 from GTO_toolkit.grids.grid_generation import *
 from GTO_toolkit.Hartree_Fock import HF_file
+from GTO_toolkit.Kohn_Sham import KS_file
 
 input_basis = Path("test_input.txt")
+#E_HF, MOs, E_orb, F = KS_file(input_basis)
 E_HF, MOs, E_orb, F = HF_file(input_basis)
 
 

@@ -1,28 +1,30 @@
 """
-This module does Restricted Hartree-Fock calculations.
+This module does Restricted Kohn-Sham calculations.
 """
 import numpy as np
 from .analytical_integrals import all_matrices
 from .input import load_basis_input
 from numba import njit
+from GTO_toolkit.grids.grid_generation import *
+from GTO_toolkit.numerical_integrals.integrator import numer_matrix, xc_energy
 
-__all__ = ["HF_file", "HF"]
+__all__ = ["KS_file", "KS"]
 
 
-def HF_file(path, eps = 10 ** (-8)):
-    """ run Hartree-Fock calculation on a file"""
+def KS_file(path, kind = 1, eps = 10 ** (-8), grid_name = "UltraFine"):
+    """ run Kohn-Sham calculation on a file"""
     N, K, geom, gen, exp, E_nucl = load_basis_input(path)
-    E_HF, MOs, E_orb, F = HF(N, K, gen, exp, geom, E_nucl, eps)
+    E_HF, MOs, E_orb, F = KS(N, K, gen, exp, geom, E_nucl, kind, eps, grid_name)
     return E_HF, MOs, E_orb, F
 
 
-def HF(N, K, gen, exp, geom, E_nucl, eps = 10 ** (-8)):
-    """ run Hartree-Fock calculation on your data"""
+def KS(N, K, gen, exp, geom, E_nucl, kind = 1, eps = 10 ** (-8), grid_name = "UltraFine"):
+    """ run Hartree-Fock calculation on your data
+        kind = 1 'LDA vxc'"""
     exp, C, S, kin, elnucl, Hcore, ten = all_matrices(K, geom, gen, exp)
-    print("Vanila SCF")
-    E_HF, MOs, E_orb, F = HF_SCF(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
-    print("DIIS SCF")
-    E_HF, MOs, E_orb, F = HF_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
+    meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)
+    E_HF, MOs, E_orb, F = KS_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, kind, eps,
+                                 meta_grid, grid, becke_weight, basis_on_grid)
     return E_HF, MOs, E_orb, F
 
 
@@ -39,7 +41,7 @@ def density_matrix(MOs, N, K):
 
 
 @njit
-def two_electron_part(Ten, P, K):
+def J_matrix(Ten, P, K):
     """ computes two electron part of the Fock matrix
         for a given density matrix.
         Code takes only left N / 2 columns of MOs matrix """
@@ -49,24 +51,26 @@ def two_electron_part(Ten, P, K):
             for i in range(K):
                 for j in range(K):
                     G[k, l] += P[i, j] * Ten[k, l, j, i]  # Coulomb
-                    G[k, l] -= P[i, j] * Ten[k, i, j, l] / 2  # Exchange
     return G
 
 
 @njit
-def Fock_matrix(MOs, N, K, H, Ten):
+def Fock_matrix(H, J, xc):
     """Compose Fock matrix for a given set of MO coefficients"""
-    P = density_matrix(MOs, N, K)
-    F = H + two_electron_part(Ten, P, K)
+    F = H + J + xc
     return F
 
 
 @njit
-def total_energy(MOs, Hcore, F, N, K, E_nucl):
-    # computes energy at each itteration for a given Fock matrix
+def KS_total_energy(MOs, Hcore, J, N, K, E_nucl,
+                 kind, geom,
+                 meta_grid, grid, Becke_weight, basis_on_grid):
+    """ Calculate Kohn-Sham total energy """
     P = density_matrix(MOs, N, K)
-    E = np.trace(P @ (Hcore + F))
-    return E / 2 + E_nucl
+    E_xc = xc_energy(kind, P, geom,
+                     meta_grid, grid, Becke_weight, basis_on_grid)
+    E = np.trace(P @ Hcore) + np.trace(P @ J) / 2 + E_xc + E_nucl
+    return E
 
 
 @njit
@@ -79,26 +83,29 @@ def generalized_eig(H, C):
     return C @ MOs_ort, E_orb
 
 
-def HF_SCF(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
-    """ vanila SCF"""
-    # performs SCF calculations
-    MOs, E_orb = generalized_eig(Hcore, C)  # initial guess
+def KS_SCF(Hcore, Ten, N, K, Geom, C, S, E_nucl, kind, eps,
+           meta_grid, grid, Becke_weight, basis_on_grid):
+    """Vanila SCF calculation"""
+
+    F = Hcore
     E0 = np.inf
-    delta_E = np.inf
+    delta_E = np.inf  # initial energy
+
     i = 0  # step
     while delta_E > eps:
-        F = Fock_matrix(MOs, N, K, Hcore, Ten)
+
         MOs, E_orb = generalized_eig(F, C)  # MOs[:, k] is a k-th eigenvalue
         P = density_matrix(MOs, N, K)
+        J = J_matrix(Ten, P, K)
+        E1 = KS_total_energy(MOs, Hcore, J, N, K, E_nucl, kind, Geom, meta_grid, grid, Becke_weight, basis_on_grid)
+        xc = numer_matrix(kind, K, Geom, P, meta_grid, grid, Becke_weight, basis_on_grid)  # matrix of exchange
         error = np.linalg.norm(F @ P @ S - S @ P @ F)
-        E1 = total_energy(MOs, Hcore, F, N, K, E_nucl)
         delta_E = np.absolute(E1 - E0)
-        E0 = E1; i += 1
-        print("step i = ", i, "; error = ", error, "; Energy = ", E1, "; delta_E =", delta_E)
-
-
+        E0 = E1;
+        i += 1
+        print("step i = ", i, "error = ", error, " Energy = ", E1, "delta_E = ", delta_E)
+        F = Fock_matrix(Hcore, J, xc)
     print("Total energy is", E0)
-    """
     print("**** MOLECULAR ORBITAL ****")
     print(E_orb)
     print("MO coefficients")
@@ -108,16 +115,17 @@ def HF_SCF(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
             if abs(MOs[j, i]) < 10 ** (-6):
                 print("func No = ", j + 1, "MO coef=", 0)
             else:
-                print("func No = ", j + 1, "MO coef=", MOs[j, i])"""
+                print("func No = ", j + 1, "MO coef=", MOs[j, i])
     return E0, MOs, E_orb, F
 
 
-def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
-    """ DIIS-SCF"""
-    MOs, E_orb = generalized_eig(Hcore, C)  # initial guess
-    F = Fock_matrix(MOs, N, K, Hcore, Ten)  # AO Fock matrix
-    E0 = total_energy(MOs, Hcore, F, N, K, E_nucl)
-    delta_E = np.absolute(E0)  # initial energy
+def KS_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, kind, eps,
+           meta_grid, grid, Becke_weight, basis_on_grid):
+    """DIIS SCF calculation"""
+
+    F = Hcore
+    E0 = np.inf
+    delta_E = np.inf  # initial energy
 
     errors = []  # errors for DIIS
     fockians = []  # fockians for DIIS
@@ -127,14 +135,19 @@ def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
 
     iter = 0  # step
     while delta_E > eps:
+
         MOs, E_orb = generalized_eig(F, C)  # MOs[:, k] is a k-th eigenvalue
         P = density_matrix(MOs, N, K)
-        E1 = total_energy(MOs, Hcore, F, N, K, E_nucl)
-        print("step i = ", iter, " Energy is ", E1, "delta_E ", delta_E)
-        delta_E = np.absolute(E1 - E0)
-        F_new = Fock_matrix(MOs, N, K, Hcore, Ten)
+        J = J_matrix(Ten, P, K)
+        E1 = KS_total_energy(MOs, Hcore, J, N, K, E_nucl, kind, Geom, meta_grid, grid, Becke_weight, basis_on_grid)
+        xc = numer_matrix(kind, K, Geom, P, meta_grid, grid, Becke_weight, basis_on_grid)  # matrix of exchange
+        F_new = Fock_matrix(Hcore, J, xc)
         error = F_new @ P @ S - S @ P @ F_new
-        E0 = E1; iter += 1
+
+        delta_E = np.absolute(E1 - E0)
+        E0 = E1;
+        iter += 1
+        print("step i = ", iter, "error = ", np.linalg.norm(error), " Energy = ", E1, "delta_E = ", delta_E)
 
         # DIIS part
         if iter <= p:
@@ -149,9 +162,7 @@ def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
             w = DIIS_coefficients(errors, n)
             F = sum(w[i] * fockians[i] for i in range(n))
 
-
     print("Total energy is", E0)
-    """
     print("**** MOLECULAR ORBITAL ****")
     print(E_orb)
     print("MO coefficients")
@@ -161,9 +172,9 @@ def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
             if abs(MOs[j, i]) < 10 ** (-6):
                 print("func No = ", j + 1, "MO coef=", 0)
             else:
-                print("func No = ", j + 1, "MO coef=", MOs[j, i])"""
-    return E0, MOs, E_orb, F
+                print("func No = ", j + 1, "MO coef=", MOs[j, i])
 
+    return E0, MOs, E_orb, F
 
 
 @njit
