@@ -1,8 +1,9 @@
 """
 This module does Restricted Hartree-Fock calculations.
 """
+import time
 import numpy as np
-from .analytical_integrals import all_matrices
+from .analytical_integrals import one_electron_matrices, elel_tensor
 from .input import load_basis_input
 from numba import njit
 
@@ -18,7 +19,15 @@ def HF_file(path, eps = 10 ** (-8)):
 
 def HF(N, K, gen, exp, geom, E_nucl, eps = 10 ** (-8)):
     """ run Hartree-Fock calculation on your data"""
-    exp, C, S, kin, elnucl, Hcore, ten = all_matrices(K, geom, gen, exp)
+    exp, C, S, kin, elnucl, Hcore = one_electron_matrices(K, geom, gen, exp)
+
+    print("Number of basis functions = ", K)
+    print("start of a tensor calculation")
+    start_cpu_time = time.process_time()
+    ten = elel_tensor(gen, exp)
+    end_cpu_time = time.process_time()
+    print("calculation of K ^ 4 = ", K ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
+
     print("Vanila SCF")
     E_HF, MOs, E_orb, F = HF_SCF(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
     print("DIIS SCF")

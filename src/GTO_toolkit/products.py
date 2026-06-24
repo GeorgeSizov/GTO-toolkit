@@ -108,6 +108,7 @@ def _primitive_product(prim1, prim2):
     return n_prod, prod
 
 
+
 def _basis_function_product(fgen1, func1, fgen2, func2):
     """compose pairwise products of basis functions"""
     # product composition
