@@ -82,7 +82,7 @@ def KS_SCF_DIIS(Hcore, N, K, Geom, C, S, E_nucl, kind, eps,
     fockians = []  # fockians for DIIS
 
     p = 4  # first iterations without DIIS, just pure SCF
-    window = 6  # stored iterations for DIIS
+    window = 5  # stored iterations for DIIS
 
     iter = 0  # step
     while delta_E > eps:

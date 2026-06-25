@@ -11,68 +11,116 @@ from GTO_toolkit.Kohn_Sham import KS_file
 from GTO_toolkit.Cholesky import Cholesky
 from GTO_toolkit.DF_Kohn_Sham import DF_KS
 from GTO_toolkit.trial_density import trial_density, density_error
+from GTO_toolkit.Important_products import Important_Selection
+
+
+def single_point(main_basis, trial_basis, iterations):
+
+    start_cpu_time = time.process_time()
+    R, P, gen0, exp0 = trial_density(trial_basis, main_basis, 1)
+    end_cpu_time = time.process_time()
+    trial_time = end_cpu_time - start_cpu_time
+    print("trial dens calculation took = ", end_cpu_time - start_cpu_time, "seconds")
+
+    N, K, geom, gen, exp, E_nucl = load_basis_input(main_basis)
+    print("K = ", K)
+
+    start_cpu_time = time.process_time()
+    Pgen, Pexp, ind, Wp, W = Important_Selection(gen, exp, geom, R, iterations)
+    end_cpu_time = time.process_time()
+    import_based_sel_time = end_cpu_time - start_cpu_time  # time
+
+    start_cpu_time = time.process_time()
+    E_ibs, _, _, _, _ = DF_KS(N, K, gen, exp, geom, E_nucl,
+                              Wp, W,  # pivoted products
+                              kind=1, eps=10 ** (-8), grid_name="UltraFine")
+    end_cpu_time = time.process_time()
+    KS_ibs_time = end_cpu_time - start_cpu_time
+
+    ########################
+
+    start_cpu_time = time.process_time()
+    Pgen, Pexp, ind, Wp, W = Cholesky(gen, exp, geom, iterations)
+    end_cpu_time = time.process_time()
+    Cholesky_time = end_cpu_time - start_cpu_time
+
+    start_cpu_time = time.process_time()
+    E_ch, _, _, _, _ = DF_KS(N, K, gen, exp, geom, E_nucl,
+                             Wp, W,  # pivoted products
+                             kind=1, eps=10 ** (-8), grid_name="UltraFine")
+    end_cpu_time = time.process_time()
+    KS_cholesky_time = end_cpu_time - start_cpu_time
+
+    print("correct KS energy is = ", -75.1591163955, " Eh")
+    print("N, E_ibs, E_cd, time_ibs, time_cd")
+    print(E_ibs, E_ch, trial_time + import_based_sel_time + KS_ibs_time, Cholesky_time + KS_cholesky_time)
+
+
+def E_vs_iter(main_basis, trial_basis, f_out, max_iter):
+    """calculate both methods multiple times
+       and write it to a txt file"""
+
+    print("*** final results ***", file=f_out)
+    print("correct KS energy is = ", -75.2390109098, " Eh", file=f_out)
+
+    start_cpu_time = time.process_time()
+    R, P, gen0, exp0 = trial_density(trial_basis, main_basis, 1)
+    end_cpu_time = time.process_time()
+    trial_time = end_cpu_time - start_cpu_time
+    print("trial dens calculation took = ", end_cpu_time - start_cpu_time, "seconds", file=f_out)
+
+    N, K, geom, gen, exp, E_nucl = load_basis_input(main_basis)
+    print("K = ", K, ", K_trial = ", gen0.shape[0], "\n")
+
+    print("N, E_ibs, E_cd, time_ibs, time_cd", file=f_out)
+
+    for iter in range(1, max_iter + 1):
+
+
+        start_cpu_time = time.process_time()
+        Pgen, Pexp, ind, Wp, W = Important_Selection(gen, exp, geom, R, iter)
+        end_cpu_time = time.process_time()
+        import_based_sel_time = end_cpu_time - start_cpu_time  # time
+
+        start_cpu_time = time.process_time()
+        E_ibs, _, _, _, _ = DF_KS(N, K, gen, exp, geom, E_nucl,
+                                  Wp, W,  # pivoted products
+                                  kind=1, eps=10 ** (-8), grid_name="UltraFine")
+        end_cpu_time = time.process_time()
+        KS_ibs_time = end_cpu_time - start_cpu_time
+
+        ########################
+
+        start_cpu_time = time.process_time()
+        Pgen, Pexp, ind, Wp, W = Cholesky(gen, exp, geom, iter)
+        end_cpu_time = time.process_time()
+        selection = end_cpu_time - start_cpu_time
+        Cholesky_time = end_cpu_time - start_cpu_time
+
+        start_cpu_time = time.process_time()
+        E_ch, _, _, _, _ = DF_KS(N, K, gen, exp, geom, E_nucl,
+                                 Wp, W,  # pivoted products
+                                 kind=1, eps=10 ** (-8), grid_name="UltraFine")
+        end_cpu_time = time.process_time()
+        KS_cholesky_time = end_cpu_time - start_cpu_time
+
+        print(iter, E_ibs, E_ch,
+              trial_time + import_based_sel_time + KS_ibs_time,
+              Cholesky_time + KS_cholesky_time,
+              file = f_out)
+
+
+main_basis = Path("H2O/w_def2TZVP.txt")
+trial_basis = Path("H2O/w_STO_6G.txt")
+output = Path("H2O/w_def2TZVP_results.txt")
+max_iter = 100
+
+with open(output, 'w') as f:
+    E_vs_iter(main_basis, trial_basis, f, max_iter)
+    #single_point(main_basis, trial_basis, 30)
 
 
 
-main_basis = Path("w_def2TZVPPD.txt")
-trial_basis = Path("w_STO-6G.txt")
-start_cpu_time = time.process_time()
-R, P, gen0, exp0 = trial_density(trial_basis, main_basis, 1)
-end_cpu_time = time.process_time()
-print("trial dens calculation took = ", end_cpu_time - start_cpu_time, "seconds")
-print("P = ", P)
-print("R = ", R)
-
-"""
-N, K, Geom, Bgen, Bexp, E_nucl = load_basis_input(input_basis)
 
 
-start_cpu_time_1 = time.process_time()
-Pgen, Pexp, ind, Wp, W = Cholesky(Bgen, Bexp, Geom, 'Coulombic', 90, 10 ** (-5))
-end_cpu_time_1 = time.process_time()
-selection = end_cpu_time_1 - start_cpu_time_1
-print("number of pivoted products = ", Pgen.shape[0])
-
-
-print("Vanila Kohn-Sham")
-start_cpu_time = time.process_time()
-E_HF, MOs, E_orb, F, P = KS_file(input_basis)
-end_cpu_time = time.process_time()
-vanila = end_cpu_time - start_cpu_time
-print("Vanila Kohn-Sham took ", vanila, "seconds")
-
-print("\n\nDF Kohn-Sham")
-start_cpu_time = time.process_time()
-E_HF, MOs, E_orb, F, P = DF_KS(N, K, Bgen, Bexp, Geom, E_nucl,
-          Wp, W,  # pivoted products
-          kind = 1, eps = 10 ** (-8), grid_name = "UltraFine")
-end_cpu_time = time.process_time()
-DF_time = end_cpu_time - start_cpu_time
-print("DF/RI Kohn-Sham took ", DF_time + selection, "seconds")
-
-#E_HF, MOs, E_orb, F = KS_file(input_basis)
-#E_HF, MOs, E_orb, F = HF_file(input_basis)
-
-grid_name = "CoarseGrid"
-N, K, Geom, Bgen, Bexp, E_nucl = load_basis_input(input_basis)
-print("Bexp = ", Bexp)
-
-rdm = np.zeros((K, K))
-rdm[0, 0] = 1
-
-meta_grid, grid, becke_weight, basis_on_grid = generate_grid(Bgen, Bexp, Geom, grid_name)
-
-start = time.perf_counter()
-M = numer_matrix(1, K, Geom, rdm, meta_grid, grid, becke_weight, basis_on_grid)
-E = xc_energy(1, rdm, Geom, meta_grid, grid, becke_weight, basis_on_grid)
-print("M = ", M)
-print("E = ", E)
-end = time.perf_counter()
-print("num integration takes = ", end - start)
-
-
-start = time.perf_counter()
-end = time.perf_counter()
-print("K = ", K)
-print("time = ", end-start)"""
 

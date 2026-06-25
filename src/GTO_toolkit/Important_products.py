@@ -7,7 +7,6 @@ from .products import product_composition
 import numpy as np
 import math as mt
 from numba import njit
-from .analytical_integrals import matrix_element
 from .utils import precompute_coll_ind, inv_coll_ind
 from .Cholesky import compute_W_column
 
@@ -22,7 +21,7 @@ def print_iteration_info(step, delta, Rmax, Wt):
     print(f"Residual norm (delta): {delta:.6e}")
     print(f"Elementwise max difference: {Rmax:.6e}")
     kappa = np.log10(np.linalg.cond(Wt))
-    print(f"Condition number (log10): {kappa:.6f}")
+    #print(f"Condition number (log10): {kappa:.6f}")
     print("W symmetricity", np.linalg.norm((Wt - Wt.T) / 2))
 
 
@@ -61,7 +60,7 @@ def R_reconstructed(Wpart, c, M, t, K, ij_indices):
     return R_rec
 
 
-def Important_Selection(gen, exp, geom, R0, kind, memory = 60, threshold = 10 ** (-4)):
+def Important_Selection(gen, exp, geom, R0, max_iter = 50, kind = 'Coulombic', memory = 60):
     """
         Reconstruct a density from its matrix representation
         ----
@@ -87,7 +86,7 @@ def Important_Selection(gen, exp, geom, R0, kind, memory = 60, threshold = 10 **
     t = 0  # current number of pivoted products
     R_max = np.inf
 
-    while (R_max > threshold) and (t < W_size):
+    while (t < max_iter) and (t < W_size):
 
         n, m = np.unravel_index(np.argmax(R_diff), R_diff.shape)
         p = inv_coll_ind(min(n, m), max(n, m))
@@ -100,19 +99,20 @@ def Important_Selection(gen, exp, geom, R0, kind, memory = 60, threshold = 10 **
         idx = Pgen_pivoted[:t, 0].astype(int) - 1  # indices which are selected
         V = vector_R(Pgen_pivoted[0:t, :], R0, t, ij_indices)
         try:
-            Wt = W[idx, :t]
-            c = np.linalg.solve(Wt, V)
+            Wp = W[idx, :t]
+            c = np.linalg.solve(Wp, V)
         except np.linalg.LinAlgError:
             print("error exit")
             break
 
-        V_rec = R_reconstructed(W[:, 0: t], c, M, t, K, ij_indices)  # updated matrix
-        V_diff = np.absolute(R0 - V_rec)
-        delta = np.linalg.norm(R0 - V_rec)
-        Vmax = np.max(V_diff)
+        R_rec = R_reconstructed(W[:, 0: t], c, M, t, K, ij_indices)
+        # updated matrix
+        R_diff = np.absolute(R0 - R_rec)
+        R_max = np.max(R_diff)
 
-        print_iteration_info(t, delta, Vmax, Wt)
-        print("selected element: n = ", n + 1, "m = ", m + 1)
+        print("==========")
+        print("Importance-based selection")
+        print("iteration # ", t)
+        print("selected element: n = ", n, "m = ", m)
 
-
-    return Pgen_pivoted, Pexp_pivoted, indices_pivoted, c, t, delta
+    return Pgen_pivoted, Pexp_pivoted, indices_pivoted, Wp, W[:, :t]

@@ -58,7 +58,7 @@ def compute_Cholesky_vector(M, W_col, L, d, ind, t):
 
 
 
-def Cholesky(gen, exp, geom, kind, memory = 100, threshold = 10 ** (-3)):
+def Cholesky(gen, exp, geom, max_iter = 50, kind = 'Coulombic', memory = 60):
     """
     main interface.
     W is a Gram matrix for products.
@@ -82,7 +82,7 @@ def Cholesky(gen, exp, geom, kind, memory = 100, threshold = 10 ** (-3)):
     L = np.zeros((M, W_size))  # Cholesky vector
     t = 0  # current number of pivoted products
 
-    while (d > threshold) and (t < W_size):
+    while (t < max_iter) and (t < W_size):
         p = np.argmax(d_error)
 
         n, m = ij_indices[p]
@@ -99,9 +99,9 @@ def Cholesky(gen, exp, geom, kind, memory = 100, threshold = 10 ** (-3)):
 
         idx = Pgen_pivoted[:t, 0].astype(int) - 1  # seletced indices
         Wp = W[idx, :t]
+        print("==========")
+        print("Cholesky")
         print("iteration # ", t)
         print("selected element is ", n, m)
-        print("condition number = ", mt.log10(np.linalg.cond(Wp)))
-        print("error d = ", d)
 
     return Pgen_pivoted[:t, :], Pexp_pivoted[:t], indices_pivoted[:t, :], Wp, W[:, :t]
