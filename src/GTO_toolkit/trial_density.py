@@ -3,33 +3,45 @@ This module generates a trial density
 within a small basis set
 """
 
+import time
 import numpy as np
-from numba import njit
+from numba import njit, prange
+from numba.np.ufunc import parallel
+
 from .input import load_basis_input
 from .Kohn_Sham import KS
 from .analytical_integrals import elel_bf
+from .utils import precompute_coll_ind
 
 
 __all__ = ["trial_density", "density_error"]
 
 
-@njit
-def rho_matrix(P, gen0, exp0, K0, gen, exp, K):
+@njit(parallel=True)
+def rho_matrix(P, gen0, exp0, K0, M0, ij,
+                   gen, exp, K, M,  nm):
     """calculate a matrix representation of
      a trial density"""
     R = np.zeros((K, K))
-    for n in range(K):
-        for m in range(n + 1):
-            result = 0.0
-            for i in range(K0):
-                for j in range(K0):
-                    result += P[i, j] * elel_bf(gen0[i, 1], exp0[i],
-                                             gen0[j, 1], exp0[j],
-                                             gen[n, 1], exp[n],
-                                             gen[m, 1], exp[m])
-            R[n, m] = result
-            if n != m:
-                R[m, n] = result
+
+    for t in prange(M):
+        n, m = nm[t]
+        result = 0.0
+        for p in range(M0):
+            i, j = ij[p]
+            if i != j:
+                result += 2 * P[i, j] * elel_bf(gen0[i, 1], exp0[i],
+                                            gen0[j, 1], exp0[j],
+                                            gen[n, 1], exp[n],
+                                            gen[m, 1], exp[m])
+            else:
+                result += P[i, j] * elel_bf(gen0[i, 1], exp0[i],
+                                            gen0[j, 1], exp0[j],
+                                            gen[n, 1], exp[n],
+                                            gen[m, 1], exp[m])
+        R[n, m] = result
+        if n != m:
+            R[m, n] = result
     return R
 
 
@@ -45,7 +57,16 @@ def trial_density(file_trial, file_main, kind):
         E_HF, MOs, E_orb, F, P= KS(N, K0, gen0, exp0, geom, E_nucl, kind)
 
     _, K, geom, gen, exp, E_nucl = load_basis_input(file_main)
-    R = rho_matrix(P, gen0, exp0, K0, gen, exp, K)
+
+    start = time.time()
+    M0 = K0 * (K0 + 1) // 2
+    ij = precompute_coll_ind(K0)
+    M = K * (K + 1) // 2
+    nm = precompute_coll_ind(K)
+    R = rho_matrix(P, gen0, exp0, K0, M0, ij,
+                       gen, exp, K, M,  nm)
+    end = time.time()
+    print("new function takes ", end - start, "seconds")
     return R, P, gen0, exp0
 
 

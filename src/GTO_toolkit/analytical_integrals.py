@@ -11,8 +11,8 @@ Molecular Electronic-Structure Theory.
 import numpy as np
 import math as mt
 import scipy as sp
-from numba import njit
-from .utils import inv_coll_ind
+from numba import njit, prange
+from .utils import inv_coll_ind, precompute_coll_ind
 import time
 
 
@@ -34,6 +34,10 @@ def one_electron_matrices(k, geom, gen, exp):
     return exp, C, S, kin, elnucl, kin + elnucl
 
 
+@njit
+def E_table(i, j, t, xpa, xpb, p, k):
+    """calculate E_table to avoid recursion"""
+    return 0
 
 
 @njit
@@ -140,7 +144,7 @@ def boys_small_T(n, T):
         term *= -T / k
         add = term / (2 * n + 2 * k + 1)
         s += add
-        if abs(add) < 1e-15 * abs(s):
+        if abs(add) < 1e-9 * abs(s):
             break
         k += 1
     return s
@@ -161,17 +165,34 @@ def boys_function(n, T):
     return f
 
 
+
 @njit
-def R(t, u, v, n, p, x, y, z, pR2):
-    """calculate R_ijk^n integrals"""
-    if t >= 2:
-        return (t - 1) * R(t - 2, u, v, n + 1, p, x, y, z, pR2) + x * R(t - 1, u, v, n + 1, p, x, y, z, pR2)
-    elif u >= 2:
-        return (u - 1) * R(t, u - 2, v, n + 1, p, x, y, z, pR2) + y * R(t, u - 1, v, n + 1, p, x, y, z, pR2)
-    elif v >= 2:
-        return (v - 1) * R(t, u, v - 2, n + 1, p, x, y, z, pR2) + z * R(t, u, v - 1, n + 1, p, x, y, z, pR2)
-    else:
-        return x ** t * y ** u * z ** v * (-2 * p) ** (n + t + u + v) * boys_function(n + t + u + v, pR2)
+def R(t0, u0, v0, Rt, p, x, y, z, pR2):
+    """calculate R_ijk^n integrals using a table Rt
+       the table Rt has four dimensions t, u, v, n"""
+
+    #Rt = np.zeros((t0 + 1, u0 + 1, v0 + 1, t0 + u0 + v0 + 1))
+
+    n_max = int(t0 + u0 + v0)  # the maximal height of the table
+    # base
+    for n in range(n_max + 1):
+        Rt[0, 0, 0, n] = (-2 * p) ** n * boys_function(n, pR2)
+
+    # 1-d layers
+    for t in range(t0 + 1):
+        for u in range(u0 + 1):
+            for v in range(v0 + 1):
+                for n in range(n_max - t - v - u, -1, -1):
+                    if t >= 2:
+                        Rt[t, u, v, n] = (t - 1) * Rt[t - 2, u, v, n + 1] + x * Rt[t - 1, u, v, n + 1]
+                    elif u >= 2:
+                        Rt[t, u, v, n] = (u - 1) * Rt[t, u - 2, v, n + 1] + y * Rt[t, u - 1, v, n + 1]
+                    elif v >= 2:
+                        Rt[t, u, v, n] = (v - 1) * Rt[t, u, v - 2, n + 1] + z * Rt[t, u, v - 1, n + 1]
+                    else:
+                        Rt[t, u, v, n] = x ** t * y ** u * z ** v * Rt[0, 0, 0, n + t + u + v]
+
+    return Rt
 
 
 @njit
@@ -221,19 +242,16 @@ def Etuv(f1, f2):
     return E3, i + j + 1, k + l + 1, m + n + 1, p, px, py, pz
 
 
+
 @njit
-def elnucl_hermite(t, u, v, p, px, py, pz, cx, cy, cz, Z):
+def elnucl_hermite(t, u, v, p, Z, Rt):
     """ electron-nucleus interaction for Hermite Gaussians
      t, u, v are hermite polynomial powers
      p is a gaussian exponent
      px, py, pz are coordinates of a basis function center
      cx, cy, cz are nucleus coordinates
      Z is a nucleus charge"""
-    xpc = px - cx
-    ypc = py - cy
-    zpc = pz - cz
-    pR2 = p * (xpc ** 2 + ypc ** 2 + zpc ** 2)
-    return - Z * 2 * mt.pi / p * R(t, u, v, 0, p, xpc, ypc, zpc, pR2)
+    return - Z * 2 * mt.pi / p * Rt[t, u, v, 0]
 
 
 @njit
@@ -244,12 +262,24 @@ def elnucl_prim(f1, f2, geom):
 
     K = int(geom.size / 4)
     E3, ij, kl, mn, p, px, py, pz = Etuv(f1, f2)
+
+    """calculate R_ijk^n integrals using a table Rt
+       the table Rt has four dimensions t, u, v, n"""
     result = 0
     for q in range(K):
+        xpc = px - geom[q, 1]
+        ypc = py - geom[q, 2]
+        zpc = pz - geom[q, 3]
+        pR2 = p * (xpc ** 2 + ypc ** 2 + zpc ** 2)
+        Rt = np.zeros((ij + 1,
+                       kl + 1,
+                       mn + 1,
+                       ij + kl + mn + 1))
+        R_table = R(ij, kl, mn, Rt, p, xpc, ypc, zpc, pR2)
         for t in range(ij):
             for u in range(kl):
                 for v in range(mn):
-                    result += E3[t, u, v] * elnucl_hermite(t, u, v, p, px, py, pz, geom[q, 1], geom[q, 2], geom[q, 3], geom[q, 0])
+                    result += E3[t, u, v] * elnucl_hermite(t, u, v, p, geom[q, 0], R_table)
     return result * f1[1] * f2[1]
 
 
@@ -307,21 +337,19 @@ def matrix(gen, exp, geom, kind):
             T[i, j] = matrix_element(gen[i, 1], exp[i], gen[j, 1], exp[j], geom, kind)
     return T
 
+
 @njit
-def elel_hermite(t1, u1, v1, p1, px1, py1, pz1, t2, u2, v2, p2, px2, py2, pz2):
+def elel_hermite(t1, u1, v1, p1,
+                     t2, u2, v2, p2,
+                     Rt):
     """ electron-electron interaction for hermite gaussians
      t, u, v are hermite polynomial parameters
      p is an exponent
      px, py, pz are coordinates of a basis function center"""
-    x = px1 - px2
-    y = py1 - py2
-    z = pz1 - pz2
-    a = p1 * p2 / (p1 + p2)
-    pR2 = a * (x ** 2 + y ** 2 + z ** 2)
-    return (-1) ** (t2 + u2 + v2) * 2 * mt.pi ** (5 / 2) / (p1 * p2 * mt.sqrt(p1 + p2)) * R(t1 + t2,
+    return (-1) ** (t2 + u2 + v2) * 2 * mt.pi ** (5 / 2) / (p1 * p2 * mt.sqrt(p1 + p2)) * Rt[t1 + t2,
                                                                                             u1 + u2,
-                                                                                            v1 + v2, 0, a,
-                                                                                            x, y, z, pR2)
+                                                                                            v1 + v2, 0]
+
 
 
 @njit
@@ -330,6 +358,22 @@ def elel_prim(f1, f2, f3, f4):
 
     E31, ij1, kl1, mn1, p1, px1, py1, pz1 = Etuv(f1, f2)
     E32, ij2, kl2, mn2, p2, px2, py2, pz2 = Etuv(f3, f4)
+
+    x = px1 - px2
+    y = py1 - py2
+    z = pz1 - pz2
+    a = p1 * p2 / (p1 + p2)
+    pR2 = a * (x ** 2 + y ** 2 + z ** 2)
+
+
+    Rt = np.zeros((ij1 + ij2 + 1,
+                        kl1 + kl2 + 1,
+                        mn1 + mn2 + 1,
+                        ij1 + ij2 + kl1 + kl2 + mn1 + mn2 + 1))
+    R_table = R(ij1 + ij2, kl1 + kl2, mn1 + mn2, Rt, a, x, y, z, pR2)
+    """calculate R_ijk^n integrals using a table Rt
+       the table Rt has four dimensions t, u, v, n"""
+
     result = 0
     for t1 in range(ij1):
         for u1 in range(kl1):
@@ -337,9 +381,8 @@ def elel_prim(f1, f2, f3, f4):
                 for t2 in range(ij2):
                     for u2 in range(kl2):
                         for v2 in range(mn2):
-                            result += E31[t1, u1, v1] * E32[t2, u2, v2] * elel_hermite(t1, u1, v1, p1, px1, py1,
-                                                                                       pz1, t2, u2, v2, p2, px2,
-                                                                                       py2, pz2)
+                            result += E31[t1, u1, v1] * E32[t2, u2, v2] * elel_hermite(t1, u1, v1, p1,
+                                                                                           t2, u2, v2, p2, R_table)
     return result * f1[1] * f2[1] * f3[1] * f4[1]
 
 
@@ -370,36 +413,48 @@ def elel_tensor_no_symm(gen, exp):
     return T
 
 
-@njit
-def elel_tensor(gen, exp):
+def precompute_tensor_pairs(K):
+    """precompute all unique (t, p) pairs for ERI tensor
+
+       needed for parallel calculations"""
+    M = K * (K + 1) // 2
+    pairs = []
+    for t in range(M):
+        for p in range(t + 1):
+            pairs.append((t, p))
+    return np.array(pairs, dtype=np.int64)
+
+
+@njit(parallel=True)
+def elel_tensor(gen, exp, indices, pairs):
     """compute a tensor of electron-electron interactions,
-       exploiting 8-fold permutational symmetry (ij|kl)=(ji|kl)=(ij|lk)=(kl|ij)..."""
+       exploiting 8-fold permutational symmetry (ij|kl)=(ji|kl)=(ij|lk)=(kl|ij)...
+       indices contain pair (i, j) for a collective index p"""
 
     K = int(gen.size / 2)
     T = np.zeros((K, K, K, K))
 
-    for i in range(K):
-        for j in range(i + 1):
-            pair_ij = inv_coll_ind(j, i)
-            for k in range(K):
-                for l in range(k + 1):
-                    pair_kl = inv_coll_ind(l, k)
-                    if pair_kl > pair_ij:
-                        continue
+    N = pairs.shape[0]
+    for q in prange(N):  # равномерная нагрузка!
+        t = pairs[q, 0]
+        p = pairs[q, 1]
+        i, j = indices[t]
+        k, l = indices[p]
 
-                    val = elel_bf(gen[i, 1], exp[i], gen[j, 1], exp[j],
-                                   gen[k, 1], exp[k], gen[l, 1], exp[l])
+        val = elel_bf(gen[i, 1], exp[i], gen[j, 1], exp[j],
+                      gen[k, 1], exp[k], gen[l, 1], exp[l])
 
-                    T[i, j, k, l] = val
-                    T[j, i, k, l] = val
-                    T[i, j, l, k] = val
-                    T[j, i, l, k] = val
-                    T[k, l, i, j] = val
-                    T[l, k, i, j] = val
-                    T[k, l, j, i] = val
-                    T[l, k, j, i] = val
+        T[i, j, k, l] = val
+        T[j, i, k, l] = val
+        T[i, j, l, k] = val
+        T[j, i, l, k] = val
+        T[k, l, i, j] = val
+        T[l, k, i, j] = val
+        T[k, l, j, i] = val
+        T[l, k, j, i] = val
 
     return T
+
 
 
 def normalization(gen, exp, geom):
@@ -468,6 +523,3 @@ def ERI_bf(prim1, f1, prim2, f2):
             M += ERI_prim(f1[i, :], f2[j, :])
     return M
 
-
-if __name__ == "__main__":
-    print(0)

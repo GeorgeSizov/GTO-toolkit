@@ -2,6 +2,7 @@
 This module does Restricted Kohn-Sham calculations
 using density fitting/resolution of identity techniques
 """
+import time
 import numpy as np
 from scipy.linalg import fractional_matrix_power
 from .analytical_integrals import one_electron_matrices
@@ -37,7 +38,10 @@ def DF_KS(N, K, gen, exp, geom, E_nucl,
         kind = 1 'LDA vxc'"""
     exp, C, S, kin, elnucl, Hcore = one_electron_matrices(K, geom, gen, exp)
     print("Number of basis functions = ", K)
-    meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)
+    start = time.time()
+    meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)  # take it out of the fucntion
+    end = time.time()
+    print("grid generation time = ", end - start)
     E_HF, MOs, E_orb, F, P = KS_SCF_DIIS(Hcore, N, K, geom, C, S, E_nucl, kind, eps,
                                       Wp, W,  # pivoted products
                                       meta_grid, grid, becke_weight, basis_on_grid)

@@ -6,7 +6,7 @@ using pivoted Cholesky decomposition
 from .products import product_composition
 import numpy as np
 import math as mt
-from numba import njit
+from numba import njit, prange
 from .analytical_integrals import matrix_element
 from .utils import precompute_coll_ind
 
@@ -29,7 +29,7 @@ def W_diag(Pgen, Pexp, geom, M, kind):
     return W_diag
 
 
-@njit
+@njit(parallel=True)
 def compute_W_column(Pgen, Pexp, new_prod_prim, new_product_exp, geom, kind):
     """
     Calculate a column of a Gram matrix of products W
@@ -40,7 +40,7 @@ def compute_W_column(Pgen, Pexp, new_prod_prim, new_product_exp, geom, kind):
         kind0 = 1
     elif kind == 'Coulombic':
         kind0 = 4
-    for i in range(M):
+    for i in prange(M):
         col[i] = matrix_element(Pgen[i, 1], Pexp[i], new_prod_prim, new_product_exp, geom, kind0)
     return col
 

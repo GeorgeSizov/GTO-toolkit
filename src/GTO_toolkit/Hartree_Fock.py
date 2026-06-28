@@ -3,7 +3,7 @@ This module does Restricted Hartree-Fock calculations.
 """
 import time
 import numpy as np
-from .analytical_integrals import one_electron_matrices, elel_tensor
+from .analytical_integrals import one_electron_matrices, elel_tensor, precompute_tensor_pairs, precompute_coll_ind
 from .input import load_basis_input
 from numba import njit
 
@@ -13,8 +13,8 @@ __all__ = ["HF_file", "HF"]
 def HF_file(path, eps = 10 ** (-8)):
     """ run Hartree-Fock calculation on a file"""
     N, K, geom, gen, exp, E_nucl = load_basis_input(path)
-    E_HF, MOs, E_orb, F = HF(N, K, gen, exp, geom, E_nucl, eps)
-    return E_HF, MOs, E_orb, F
+    E_HF, MOs, E_orb, F, P = HF(N, K, gen, exp, geom, E_nucl, eps)
+    return E_HF, MOs, E_orb, F, P
 
 
 def HF(N, K, gen, exp, geom, E_nucl, eps = 10 ** (-8)):
@@ -23,16 +23,18 @@ def HF(N, K, gen, exp, geom, E_nucl, eps = 10 ** (-8)):
 
     print("Number of basis functions = ", K)
     print("start of a tensor calculation")
-    start_cpu_time = time.process_time()
-    ten = elel_tensor(gen, exp)
-    end_cpu_time = time.process_time()
+    start_cpu_time = time.time()
+    indices = precompute_coll_ind(K)
+    pairs = precompute_tensor_pairs(K)
+    ten = elel_tensor(gen, exp, indices, pairs)
+    end_cpu_time = time.time()
     print("calculation of K ^ 4 = ", K ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
 
-    print("Vanila SCF")
-    E_HF, MOs, E_orb, F = HF_SCF(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
+    #print("Vanila SCF")
+    #E_HF, MOs, E_orb, F = HF_SCF(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
     print("DIIS SCF")
-    E_HF, MOs, E_orb, F = HF_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
-    return E_HF, MOs, E_orb, F
+    E_HF, MOs, E_orb, F, P = HF_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, eps)
+    return E_HF, MOs, E_orb, F, P
 
 
 @njit
@@ -118,7 +120,7 @@ def HF_SCF(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
                 print("func No = ", j + 1, "MO coef=", 0)
             else:
                 print("func No = ", j + 1, "MO coef=", MOs[j, i])"""
-    return E0, MOs, E_orb, F
+    return E0, MOs, E_orb, F, P
 
 
 def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
@@ -171,7 +173,7 @@ def HF_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, eps):
                 print("func No = ", j + 1, "MO coef=", 0)
             else:
                 print("func No = ", j + 1, "MO coef=", MOs[j, i])"""
-    return E0, MOs, E_orb, F
+    return E0, MOs, E_orb, F, P
 
 
 

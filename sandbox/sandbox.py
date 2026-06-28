@@ -61,13 +61,14 @@ def E_vs_iter(main_basis, trial_basis, f_out, max_iter):
        and write it to a txt file"""
 
     print("*** final results ***", file=f_out)
-    print("correct KS energy is = ", -75.2390109098, " Eh", file=f_out)
+    print("correct KS energy is = ", -76.8701632227, " Eh", file=f_out)
 
-    start_cpu_time = time.process_time()
+    start_cpu_time = time.time()
     R, P, gen0, exp0 = trial_density(trial_basis, main_basis, 1)
-    end_cpu_time = time.process_time()
+    end_cpu_time = time.time()
     trial_time = end_cpu_time - start_cpu_time
     print("trial dens calculation took = ", end_cpu_time - start_cpu_time, "seconds", file=f_out)
+    print("trial dens calculation took = ", end_cpu_time - start_cpu_time, "seconds")
 
     N, K, geom, gen, exp, E_nucl = load_basis_input(main_basis)
     print("K = ", K, ", K_trial = ", gen0.shape[0], "\n")
@@ -110,14 +111,20 @@ def E_vs_iter(main_basis, trial_basis, f_out, max_iter):
               file = f_out)
 
 
-main_basis = Path("H2O/w_def2TZVP.txt")
-trial_basis = Path("H2O/w_STO_6G.txt")
-output = Path("H2O/w_def2TZVP_results.txt")
-max_iter = 100
+main_basis = Path("methanol/methanol_def2SVPD.txt")
+trial_basis = Path("methanol/methanol_STO_6G.txt")
+output = Path("methanol/methanol_def2SVPD_results.txt")
+max_iter = 70
 
 with open(output, 'w') as f:
-    E_vs_iter(main_basis, trial_basis, f, max_iter)
-    #single_point(main_basis, trial_basis, 30)
+    #E_vs_iter(main_basis, trial_basis, f, max_iter)
+    single_point(main_basis, trial_basis, 50)
+    start = time.time()
+    E_HF, MOs, E_orb, F, P = KS_file(main_basis, kind = 1, eps = 10 ** (-8), grid_name = "UltraFine")
+    end = time.time()
+    print("TIME = ", end - start)
+    print("E_HF= ", E_HF)
+
 
 
 

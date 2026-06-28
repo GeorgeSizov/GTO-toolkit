@@ -4,7 +4,7 @@ This module does Restricted Kohn-Sham calculations.
 import time
 import numpy as np
 from scipy.linalg import fractional_matrix_power
-from .analytical_integrals import one_electron_matrices, elel_tensor
+from .analytical_integrals import one_electron_matrices, elel_tensor, precompute_tensor_pairs, precompute_coll_ind
 from .input import load_basis_input
 from numba import njit
 from GTO_toolkit.grids.grid_generation import *
@@ -20,24 +20,26 @@ __all__ = ["KS_file", "KS",
 def KS_file(path, kind = 1, eps = 10 ** (-8), grid_name = "UltraFine"):
     """ run Kohn-Sham calculation on a file"""
     N, K, geom, gen, exp, E_nucl = load_basis_input(path)
-    E_HF, MOs, E_orb, F, P = KS(N, K, gen, exp, geom, E_nucl, kind, eps, grid_name)
-    return E_HF, MOs, E_orb, F, P
+    E_KS, MOs, E_orb, F, P = KS(N, K, gen, exp, geom, E_nucl, kind, eps, grid_name)
+    return E_KS, MOs, E_orb, F, P
 
 
 def KS(N, K, gen, exp, geom, E_nucl, kind = 1, eps = 10 ** (-8), grid_name = "UltraFine"):
-    """ run Hartree-Fock calculation on your data
+    """ run Kohn-Sham calculation on your data
         kind = 1 'LDA vxc'"""
     exp, C, S, kin, elnucl, Hcore = one_electron_matrices(K, geom, gen, exp)
     print("Number of basis functions = ", K)
     print("start of a tensor calculation")
-    start_cpu_time = time.process_time()
-    ten = elel_tensor(gen, exp)
-    end_cpu_time = time.process_time()
+    start_cpu_time = time.time()
+    indices = precompute_coll_ind(K)
+    pairs = precompute_tensor_pairs(K)
+    ten = elel_tensor(gen, exp, indices, pairs)
+    end_cpu_time = time.time()
     print("calculation of K ^ 4 = ", K ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
     meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)
-    E_HF, MOs, E_orb, F, P = KS_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, kind, eps,
+    E_KS, MOs, E_orb, F, P = KS_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, kind, eps,
                                  meta_grid, grid, becke_weight, basis_on_grid)
-    return E_HF, MOs, E_orb, F, P
+    return E_KS, MOs, E_orb, F, P
 
 
 @njit
@@ -145,8 +147,8 @@ def KS_SCF_DIIS(Hcore, Ten, N, K, Geom, C, S, E_nucl, kind, eps,
     errors = []  # errors for DIIS
     fockians = []  # fockians for DIIS
 
-    p = 4  # first iterations without DIIS, just pure SCF
-    window = 5  # stored iterations for DIIS
+    p = 1  # first iterations without DIIS, just pure SCF
+    window = 10  # stored iterations for DIIS
 
     iter = 0  # step
     while delta_E > eps:
@@ -198,7 +200,7 @@ def DIIS_coefficients(errors, n):
     B = np.zeros((n + 1, n + 1))
     for i in range(n):
         for j in range(n):
-            B[i, j] = np.trace(errors[i] @ errors[j])
+            B[i, j] = np.sum(errors[i] * errors[j])
     for i in range(n):
         B[i, n] = -1
         B[n, i] = -1
