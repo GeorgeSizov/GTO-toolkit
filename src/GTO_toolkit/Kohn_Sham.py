@@ -11,7 +11,7 @@ from GTO_toolkit.grids.grid_generation import *
 from GTO_toolkit.numerical_integrals.integrator import numer_matrix, xc_energy
 
 
-__all__ = ["KS_file", "KS",
+__all__ = ["KS_file", "KS", "KS_total_energy", "Fock_matrix",
            "density_matrix", "Fock_matrix", "KS_total_energy",
            "generalized_eig", "DIIS_coefficients"
            ]
@@ -29,16 +29,24 @@ def KS(N, K, gen, exp, geom, E_nucl, kind = 1, eps = 10 ** (-8), grid_name = "Ul
         kind = 1 'LDA vxc'"""
     exp, C, S, kin, elnucl, Hcore = one_electron_matrices(K, geom, gen, exp)
     print("Number of basis functions = ", K)
-    print("start of a tensor calculation")
-    start_cpu_time = time.time()
-    indices = precompute_coll_ind(K)
-    pairs = precompute_tensor_pairs(K)
-    ten = elel_tensor(gen, exp, indices, pairs)
-    end_cpu_time = time.time()
-    print("calculation of K ^ 4 = ", K ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
-    meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)
-    E_KS, MOs, E_orb, F, P = KS_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, kind, eps,
-                                 meta_grid, grid, becke_weight, basis_on_grid)
+
+    if kind == 0:
+        F = Hcore
+        MOs, E_orb = generalized_eig(F, C)  # MOs[:, k] is a k-th eigenvalue
+        P = density_matrix(MOs, N, K)
+        E_KS = np.trace(P @ Hcore) + E_nucl
+        print("Total energy is", E_KS)
+    elif kind == 1:
+        print("start of a tensor calculation")
+        start_cpu_time = time.time()
+        indices = precompute_coll_ind(K)
+        pairs = precompute_tensor_pairs(K)
+        ten = elel_tensor(gen, exp, indices, pairs)
+        end_cpu_time = time.time()
+        print("calculation of K ^ 4 = ", K ** 4, " tensor elements took ", end_cpu_time - start_cpu_time, "seconds")
+        meta_grid, grid, becke_weight, basis_on_grid = generate_grid(gen, exp, geom, grid_name)
+        E_KS, MOs, E_orb, F, P = KS_SCF_DIIS(Hcore, ten, N, K, geom, C, S, E_nucl, kind, eps,
+                                    meta_grid, grid, becke_weight, basis_on_grid)
     return E_KS, MOs, E_orb, F, P
 
 
@@ -98,6 +106,7 @@ def generalized_eig(H, C):
     E_orb = E_orb[idx]
     MOs_ort = MOs_ort[:, idx]
     return C @ MOs_ort, E_orb
+
 
 
 def KS_SCF(Hcore, Ten, N, K, Geom, C, S, E_nucl, kind, eps,

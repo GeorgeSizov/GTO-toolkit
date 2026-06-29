@@ -50,11 +50,11 @@ def trial_density(file_trial, file_main, kind):
     """
     interface to return a trial density matrix P and
     its matrix representation R within a bigger basis set
+    kind = 0 is 'V_{ee} = 0 density'
     kind = 1 is 'xLDA density'
     """
     N, K0, geom, gen0, exp0, E_nucl = load_basis_input(file_trial)
-    if kind == 1:
-        E_HF, MOs, E_orb, F, P= KS(N, K0, gen0, exp0, geom, E_nucl, kind)
+    E_HF, MOs, E_orb, F, P = KS(N, K0, gen0, exp0, geom, E_nucl, kind)
 
     _, K, geom, gen, exp, E_nucl = load_basis_input(file_main)
 

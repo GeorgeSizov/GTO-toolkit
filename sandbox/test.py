@@ -24,8 +24,12 @@ print(f"SciPy version: {scipy.__version__}")
 print(config.NUMBA_NUM_THREADS)
 
 
-main_basis = Path("methanol/methanol_def2SVPD.txt")
+main_basis = Path("ethene/ethene_def2TZVPPD.txt")
 N, K, geom, gen, exp, E_nucl = load_basis_input(main_basis)
+
+print("k = ", K)
+print("gen = ", gen)
+print("exp = ", exp)
 
 
 start_cpu_time = time.time()

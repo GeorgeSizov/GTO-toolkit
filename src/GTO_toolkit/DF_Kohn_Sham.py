@@ -55,6 +55,8 @@ def B_vectors(W_full, Wp):
     Wp: 2-center integrals between pivots (pivots x pivots)
     """
     V_inv_half = fractional_matrix_power(Wp, -0.5)
+    if np.iscomplexobj(V_inv_half):
+        V_inv_half = V_inv_half.real
     B = W_full @ V_inv_half
     return B
 
@@ -86,7 +88,7 @@ def KS_SCF_DIIS(Hcore, N, K, Geom, C, S, E_nucl, kind, eps,
     fockians = []  # fockians for DIIS
 
     p = 4  # first iterations without DIIS, just pure SCF
-    window = 5  # stored iterations for DIIS
+    window = 6  # stored iterations for DIIS
 
     iter = 0  # step
     while delta_E > eps:
